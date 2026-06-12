@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Mapa de Memórias - Nossa História</title>
+  
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- AOS Animation -->
+  <link href="https://unpkg.com/aos@2.3.1/dist/aos.css" rel="stylesheet">
+  
+  <!-- Leaflet Map -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+  
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Playfair+Display:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
+  
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Outfit', 'sans-serif'],
+            serif: ['Playfair Display', 'serif'],
+          },
+          colors: {
+            sand: {
+              50: '#fbf8f3',
+              100: '#f5efe4',
+              200: '#eadbc5',
+              300: '#dec09e',
+              400: '#d0a075',
+            },
+            night: {
+              800: '#1e293b',
+              900: '#0f172a',
+              950: '#020617',
+            }
+          },
+          animation: {
+            'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+            'bounce-slow': 'bounce 2s infinite',
+            'float': 'float 6s ease-in-out infinite',
+          },
+          keyframes: {
+            float: {
+              '0%, 100%': { transform: 'translateY(0)' },
+              '50%': { transform: 'translateY(-10px)' },
+            }
+          }
+        }
+      }
+    }
+  </script>
+  
+  <link rel="stylesheet" href="style.css">
+</head>
+<body class="bg-night-950 text-sand-100 overflow-x-hidden antialiased">
+
+  <!-- Intro Section -->
+  <section class="relative w-full h-screen flex flex-col items-center justify-center z-10 px-6" data-aos="fade-up" data-aos-duration="1200">
+    <div class="text-center max-w-2xl mx-auto">
+      <p class="text-sand-300 text-sm tracking-[0.3em] uppercase mb-4 font-medium">Dia dos Namorados</p>
+      <h1 class="font-serif text-5xl md:text-7xl lg:text-8xl text-sand-50 mb-6 leading-tight italic">
+        Nosso Mapa de<br>Memórias
+      </h1>
+      <p class="text-sand-200 text-lg md:text-xl font-light leading-relaxed mb-10 max-w-lg mx-auto">
+        Cada pino neste mapa guarda um momento nosso. Toque nos corações para reviver nossa história.
+      </p>
+      <button onclick="scrollToMap()" class="group inline-flex items-center gap-3 bg-sand-100 text-night-950 px-8 py-4 rounded-full font-medium transition-all duration-500 hover:bg-sand-200 hover:scale-105 shadow-2xl shadow-sand-900/20">
+        <span>Explorar Nosso Mapa</span>
+        <i data-lucide="arrow-down" class="w-5 h-5 transition-transform group-hover:translate-y-1"></i>
+      </button>
+    </div>
+    
+    <div class="absolute bottom-10 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2 opacity-60">
+      <div class="w-px h-16 bg-gradient-to-b from-sand-300 to-transparent"></div>
+    </div>
+  </section>
+
+  <!-- Map Section -->
+  <section id="map-section" class="relative w-full min-h-screen flex items-center justify-center py-12 px-4 md:px-8">
+    <div class="w-full max-w-7xl mx-auto">
+      
+      <div class="text-center mb-8 md:mb-12" data-aos="fade-up" data-aos-delay="200">
+        <h2 class="font-serif text-3xl md:text-5xl text-sand-50 italic mb-3">Onde Nosso Amor Floresceu</h2>
+        <p class="text-sand-300 font-light">Explore o mapa, busque lugares e toque nos marcadores</p>
+      </div>
+
+      <!-- Map Controls -->
+      <div id="map-controls" class="mb-4 max-w-7xl mx-auto space-y-3" data-aos="fade-up" data-aos-delay="300">
+        <div class="search-tabs">
+          <button type="button" id="search-tab-places" class="search-tab active">
+            <i data-lucide="map-pin" class="w-4 h-4"></i>
+            <span>Buscar Lugar</span>
+          </button>
+          <button type="button" id="search-tab-pins" class="search-tab">
+            <i data-lucide="heart" class="w-4 h-4"></i>
+            <span>Buscar Pin</span>
+          </button>
+        </div>
+
+        <div class="flex flex-col sm:flex-row gap-3">
+          <div class="relative flex-1 search-input-wrapper">
+            <i data-lucide="search" class="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-sand-400 pointer-events-none"></i>
+            <input
+              type="text"
+              id="search-input"
+              placeholder="Digite um endereço ou lugar (ex: Rua São José, Cariacica)"
+              class="w-full pl-11 pr-4 py-3 bg-night-900 border border-sand-800/50 rounded-xl text-sand-100 placeholder:text-sand-500 focus:outline-none focus:border-rose-500/50 focus:ring-1 focus:ring-rose-500/30 transition-all"
+              autocomplete="off"
+            >
+            <div id="search-results" class="search-results hidden"></div>
+          </div>
+          <button id="toggle-edit-btn" class="inline-flex items-center justify-center gap-2 px-5 py-3 bg-night-900 border border-sand-800/50 rounded-xl text-sand-200 hover:bg-night-800 hover:border-sand-700 transition-all whitespace-nowrap">
+            <i data-lucide="pencil" class="w-4 h-4"></i>
+            <span>Modo Edição</span>
+          </button>
+          <button id="add-pin-btn" class="hidden inline-flex items-center justify-center gap-2 px-5 py-3 bg-rose-600 hover:bg-rose-500 rounded-xl text-white font-medium transition-all whitespace-nowrap shadow-lg shadow-rose-900/30">
+            <i data-lucide="plus" class="w-4 h-4"></i>
+            <span>Adicionar Pin</span>
+          </button>
+        </div>
+
+        <div id="backup-controls" class="hidden flex flex-wrap gap-2 justify-center sm:justify-start">
+          <button type="button" id="export-data-btn" class="inline-flex items-center gap-2 px-4 py-2 text-sm bg-night-900 border border-sand-800/50 rounded-lg text-sand-300 hover:text-sand-100 hover:border-sand-600 transition-all">
+            <i data-lucide="download" class="w-3.5 h-3.5"></i>
+            <span>Exportar backup</span>
+          </button>
+          <button type="button" id="import-data-btn" class="inline-flex items-center gap-2 px-4 py-2 text-sm bg-night-900 border border-sand-800/50 rounded-lg text-sand-300 hover:text-sand-100 hover:border-sand-600 transition-all">
+            <i data-lucide="upload" class="w-3.5 h-3.5"></i>
+            <span>Importar backup</span>
+          </button>
+          <input type="file" id="import-file-input" accept=".json" class="hidden">
+        </div>
+      </div>
+
+      <p id="edit-hint" class="hidden text-center text-sand-400 text-sm mb-4">
+        Modo edição ativo — clique no mapa para escolher o local do pin
+      </p>
+
+      <!-- Map Container -->
+      <div class="relative w-full mx-auto" style="max-width: 1200px;" id="map-container" data-aos="zoom-in" data-aos-duration="1000">
+        <div class="relative w-full h-[55vh] md:h-[65vh] min-h-[400px] bg-night-900 rounded-2xl overflow-hidden shadow-2xl border border-sand-900/50">
+          <div id="leaflet-map" class="w-full h-full"></div>
+          <div class="leaflet-map-vignette absolute inset-0 pointer-events-none shadow-[inset_0_0_80px_rgba(0,0,0,0.4)] rounded-2xl"></div>
+        </div>
+      </div>
+
+      <!-- Legend -->
+      <div class="flex flex-wrap justify-center gap-6 mt-8 md:mt-12" data-aos="fade-up" data-aos-delay="400">
+        <div class="flex items-center gap-2 text-sand-300 text-sm">
+          <span class="w-3 h-3 rounded-full bg-rose-500 animate-pulse"></span>
+          <span>Lugares Especiais</span>
+        </div>
+        <div class="flex items-center gap-2 text-sand-300 text-sm">
+          <i data-lucide="music" class="w-4 h-4"></i>
+          <span>Nossas Músicas</span>
+        </div>
+        <div class="flex items-center gap-2 text-sand-300 text-sm">
+          <i data-lucide="image" class="w-4 h-4"></i>
+          <span>Fotos Memoráveis</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="w-full py-12 text-center border-t border-sand-900/30 mt-12">
+    <p class="font-serif italic text-2xl text-sand-100 mb-2">Para Sempre</p>
+    <p class="text-sand-400 text-sm">Com amor, hoje e sempre 💕</p>
+  </footer>
+
+  <!-- Memory View Modal -->
+  <div id="memory-modal" class="fixed inset-0 z-[1000] hidden" role="dialog" aria-modal="true">
+    <div class="absolute inset-0 bg-night-950/90 backdrop-blur-sm transition-opacity duration-500 opacity-0" id="modal-backdrop" onclick="closeModal()"></div>
+    
+    <div class="absolute inset-0 flex items-center justify-center p-4 md:p-6 pointer-events-none">
+      <div id="modal-card" class="relative w-full max-w-lg bg-night-900 border border-sand-800/50 rounded-3xl overflow-hidden shadow-2xl transform scale-95 opacity-0 transition-all duration-500 pointer-events-auto max-h-[90vh] overflow-y-auto">
+        
+        <button onclick="closeModal()" class="absolute top-4 right-4 z-10 w-10 h-10 bg-night-950/50 backdrop-blur-md rounded-full flex items-center justify-center text-sand-100 hover:bg-rose-500 transition-colors duration-300 border border-sand-800/50">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+
+        <div class="relative w-full h-64 md:h-72 overflow-hidden">
+          <img id="modal-image" src="" alt="Memory" class="w-full h-full object-cover">
+          <div class="absolute inset-0 bg-gradient-to-t from-night-900 via-transparent to-transparent"></div>
+          
+          <div id="modal-spotify-badge" class="absolute bottom-4 left-4 flex items-center gap-2 bg-night-950/80 backdrop-blur-md px-3 py-1.5 rounded-full border border-sand-800/30">
+            <i data-lucide="music" class="w-4 h-4 text-green-400"></i>
+            <span class="text-xs text-sand-200 font-medium">Nossa Música</span>
+          </div>
+        </div>
+
+        <div class="p-6 md:p-8">
+          <h3 id="modal-title" class="font-serif text-2xl md:text-3xl text-sand-50 italic mb-3"></h3>
+          <p id="modal-description" class="text-sand-300 font-light leading-relaxed mb-6"></p>
+          
+          <div id="modal-spotify-divider" class="w-full h-px bg-sand-800/30 mb-6"></div>
+          
+          <div id="modal-spotify-container" class="rounded-xl overflow-hidden bg-night-950 border border-sand-800/30 shadow-lg">
+            <iframe id="modal-spotify" src="" width="100%" height="152" frameBorder="0" allowfullscreen="" allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture" loading="lazy" class="w-full"></iframe>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Pin Form Modal (Add/Edit) -->
+  <div id="pin-form-modal" class="fixed inset-0 z-[1000] hidden" role="dialog" aria-modal="true">
+    <div class="absolute inset-0 bg-night-950/90 backdrop-blur-sm transition-opacity duration-500 opacity-0" id="form-backdrop"></div>
+    
+    <div class="absolute inset-0 flex items-center justify-center p-4 md:p-6 pointer-events-none">
+      <div id="form-card" class="relative w-full max-w-lg bg-night-900 border border-sand-800/50 rounded-3xl overflow-hidden shadow-2xl transform scale-95 opacity-0 transition-all duration-500 pointer-events-auto max-h-[90vh] overflow-y-auto">
+        
+        <button id="close-form-btn" class="absolute top-4 right-4 z-10 w-10 h-10 bg-night-950/50 backdrop-blur-md rounded-full flex items-center justify-center text-sand-100 hover:bg-rose-500 transition-colors duration-300 border border-sand-800/50">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+
+        <div class="p-6 md:p-8">
+          <h3 id="form-title" class="font-serif text-2xl md:text-3xl text-sand-50 italic mb-6">Nova Memória</h3>
+          
+          <form id="pin-form" class="space-y-4">
+            <input type="hidden" id="pin-id">
+            <input type="hidden" id="pin-lat">
+            <input type="hidden" id="pin-lng">
+
+            <div>
+              <label for="pin-label-input" class="block text-sand-300 text-sm mb-1.5">Rótulo do pin</label>
+              <input type="text" id="pin-label-input" required placeholder="Ex: Primeiro Encontro" class="form-input">
+            </div>
+
+            <div>
+              <label for="pin-title-input" class="block text-sand-300 text-sm mb-1.5">Título</label>
+              <input type="text" id="pin-title-input" required placeholder="Ex: O Primeiro Olhar" class="form-input">
+            </div>
+
+            <div>
+              <label for="pin-description-input" class="block text-sand-300 text-sm mb-1.5">Descrição</label>
+              <textarea id="pin-description-input" required rows="4" placeholder="Conte a história deste momento..." class="form-input resize-none"></textarea>
+            </div>
+
+            <div>
+              <label for="pin-image-input" class="block text-sand-300 text-sm mb-1.5">Imagem</label>
+              <input type="file" id="pin-image-input" accept="image/*" class="form-input file:mr-4 file:py-1 file:px-3 file:rounded-lg file:border-0 file:bg-rose-600 file:text-white file:text-sm file:cursor-pointer">
+              <p class="text-sand-500 text-xs mt-1">Ou cole uma URL abaixo</p>
+              <input type="url" id="pin-image-url" placeholder="https://..." class="form-input mt-2">
+              <div id="image-preview" class="hidden mt-3 rounded-xl overflow-hidden h-32 border border-sand-800/50">
+                <img id="image-preview-img" src="" alt="Preview" class="w-full h-full object-cover">
+              </div>
+            </div>
+
+            <div>
+              <label for="pin-spotify-input" class="block text-sand-300 text-sm mb-1.5">Link do Spotify <span class="text-sand-500">(opcional)</span></label>
+              <input type="url" id="pin-spotify-input" placeholder="https://open.spotify.com/track/... ou intl-pt/track/..." class="form-input">
+              <p class="text-sand-500 text-xs mt-1">Cole o link da música (Compartilhar → Copiar link). Funciona com links normais e intl-pt.</p>
+            </div>
+
+            <p id="pin-location-display" class="text-sand-400 text-xs flex items-center gap-1.5">
+              <i data-lucide="map-pin" class="w-3.5 h-3.5"></i>
+              <span>Clique no mapa para definir a localização</span>
+            </p>
+
+            <div class="flex gap-3 pt-2">
+              <button type="submit" class="flex-1 inline-flex items-center justify-center gap-2 px-5 py-3 bg-rose-600 hover:bg-rose-500 rounded-xl text-white font-medium transition-all">
+                <i data-lucide="save" class="w-4 h-4"></i>
+                <span>Salvar</span>
+              </button>
+              <button type="button" id="delete-pin-btn" class="hidden inline-flex items-center justify-center gap-2 px-5 py-3 bg-night-800 hover:bg-red-900/50 border border-red-900/50 rounded-xl text-red-400 transition-all">
+                <i data-lucide="trash-2" class="w-4 h-4"></i>
+                <span>Excluir</span>
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- AOS Script -->
+  <script src="https://unpkg.com/aos@2.3.1/dist/aos.js"></script>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  
+  <script src="script.js"></script>
+</body>
+</html>

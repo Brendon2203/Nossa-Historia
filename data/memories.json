@@ -1,0 +1,42 @@
+[
+  {
+    "id": "1",
+    "title": "O Primeiro Olhar",
+    "description": "Foi aqui que nossos olhos se encontraram pela primeira vez. Eu sabia, naquele exato segundo, que algo mágico estava prestes a acontecer.",
+    "image": "http://static.photos/cityscape/640x360/101",
+    "spotifyEmbed": "https://open.spotify.com/embed/track/1dGr1c8CrMLDpV6aMbGInw?utm_source=generator&theme=0",
+    "lat": -22.9068,
+    "lng": -43.1729,
+    "label": "Primeiro Encontro"
+  },
+  {
+    "id": "2",
+    "title": "Cristo Redentor",
+    "description": "Um dos lugares mais especiais do Rio. Daqui de cima, o mundo parece pequeno, mas nosso amor parece infinito.",
+    "image": "http://static.photos/nature/640x360/42",
+    "spotifyEmbed": "https://open.spotify.com/embed/track/4iV5W8uOJ0OGid8xwOQDch?utm_source=generator&theme=0",
+    "lat": -22.9519,
+    "lng": -43.2105,
+    "label": "Cristo Redentor"
+  },
+  {
+    "id": "3",
+    "title": "O Pedido",
+    "description": "Com as mãos trêmulas e o coração a mil, te pedi para ser minha pessoa favorita no mundo. Você disse sim.",
+    "image": "http://static.photos/night/640x360/7",
+    "spotifyEmbed": "",
+    "lat": -23.5505,
+    "lng": -46.6333,
+    "label": "O Sim"
+  },
+  {
+    "id": "mqaf3d4r6cd341",
+    "label": "Nosso primeiro Beijo",
+    "title": "Onde tudo começou",
+    "description": "Eu tinha um pouco de medo mas cheguei em você",
+    "image": "/uploads/1781237963806-5274b8dc.png",
+    "spotifyEmbed": "https://open.spotify.com/embed/track/6gs5en9ccwH9tVtHOZm8jW?utm_source=generator&theme=0",
+    "lat": -20.279191086825342,
+    "lng": -40.2972251145728
+  }
+]
