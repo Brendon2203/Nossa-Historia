@@ -6,9 +6,10 @@ const crypto = require('crypto');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const DATA_DIR = path.join(__dirname, 'data');
+const ROOT_DIR = __dirname;
+const DATA_DIR = process.env.DATA_DIR || path.join(ROOT_DIR, 'data');
 const DATA_FILE = path.join(DATA_DIR, 'memories.json');
-const UPLOADS_DIR = path.join(__dirname, 'uploads');
+const UPLOADS_DIR = process.env.UPLOADS_DIR || path.join(ROOT_DIR, 'uploads');
 
 const DEFAULT_MEMORIES = [
   {
@@ -74,7 +75,7 @@ function isLocalUpload(imagePath) {
 
 function deleteLocalImage(imagePath) {
   if (!isLocalUpload(imagePath)) return;
-  const filePath = path.join(__dirname, imagePath);
+  const filePath = path.join(ROOT_DIR, imagePath);
   if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
 }
 
@@ -97,7 +98,11 @@ const upload = multer({
 
 app.use(express.json({ limit: '1mb' }));
 app.use('/uploads', express.static(UPLOADS_DIR));
-app.use(express.static(__dirname));
+app.use(express.static(ROOT_DIR));
+
+app.get('/api/health', (_req, res) => {
+  res.json({ ok: true, storage: 'filesystem' });
+});
 
 app.get('/api/memories', (_req, res) => {
   res.json(readMemories());

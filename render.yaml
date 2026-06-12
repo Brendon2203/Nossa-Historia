@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: nossa-historia
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
+
+# ── Disco persistente (opcional, plano pago ~US$7/mês) ──
+# Descomente as linhas abaixo E remova plan: free acima (use starter).
+# Assim fotos e pins não se perdem ao redeployar.
+#
+#    disk:
+#      name: nossa-historia-dados
+#      mountPath: /var/data
+#      sizeGB: 1
+#    envVars:
+#      - key: DATA_DIR
+#        value: /var/data/memories
+#      - key: UPLOADS_DIR
+#        value: /var/data/uploads
