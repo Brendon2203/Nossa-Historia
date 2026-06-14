@@ -30,7 +30,22 @@ A interface é construída com HTML, CSS e JavaScript, usando Leaflet para o map
 ## Hospedagem recomendada: Render
 
 Este projeto usa **Node.js + Express** e salva fotos/pins em **arquivos no disco**.
-Por isso o **Render** é a opção mais simples — o código sobe sem refatoração.
+O **Render** é a melhor opção — o código sobe sem refatoração.
+
+### ⚠️ IMPORTANTE: Escolha do Plano
+
+| | Plano Gratuito | Plano Starter (~US$7/mês) |
+|---|---|---|
+| **Custo** | $0 | ~$7/mês |
+| **Servidor online** | Sim | Sim |
+| **Disco persistente** | ❌ NÃO | ✅ **SIM** |
+| **Pins salvos** | ❌ Perdem ao redeployar | ✅ Permanecem |
+| **Imagens salvas** | ❌ Desaparecem | ✅ Permanecem |
+| **Restart automático** | Sim (~15 min inatividade) | Sim (~15 min inatividade) |
+
+**⭐ Recomendação:** Use o **Plano Starter com disco persistente** para não perder dados.
+
+O arquivo `render.yaml` **já está configurado com disco ativado** — basta escolher o plano Starter ao fazer o deploy.
 
 ### Deploy no Render (passo a passo)
 
@@ -38,20 +53,22 @@ Por isso o **Render** é a opção mais simples — o código sobe sem refatora�
 2. Acesse [render.com](https://render.com) e crie uma conta.
 3. Clique em **New → Blueprint** e conecte o repositório.
 4. O Render detecta o arquivo `render.yaml` e configura tudo automaticamente.
-5. Clique em **Apply** e aguarde o deploy.
+5. **⚠️ Escolha o plano:**
+   - Se quer manter fotos e pins: escolha **Starter** (disco persistente)
+   - Se quer gratuito: saiba que perderá tudo ao redeployar
+6. Clique em **Apply** e aguarde o deploy.
 
-### Plano gratuito vs. disco persistente
+### O que mudou?
 
-| | Grátis | Com disco (~US$7/mês) |
-|---|---|---|
-| Site online | Sim | Sim |
-| Fotos salvas para sempre | **Não** — perdem ao redeployar | **Sim** |
-| Primeira visita após inatividade | Pode demorar ~1 min | Pode demorar ~1 min |
+✅ **Novo `render.yaml`:**
+- Disco persistente **já está ativado** (`2GB`)
+- Plano configurado para **Starter** (com disco)
+- `DATA_DIR` e `UPLOADS_DIR` apontam para `/var/data` (disco persistente)
 
-**Recomendação:** use o disco persistente se for guardar fotos importantes.
-No `render.yaml`, a seção `disk` já está configurada — basta escolher um plano que inclua disco ao fazer o deploy.
-
-Sem disco: exporte backup pelo site (Modo Edição → Exportar backup) de vez em quando.
+✅ **Novo aviso ao exportar backup:**
+- Quando você clica em "Exportar backup", recebe um aviso se tem imagens locais
+- O JSON salva apenas os *links* das imagens, não as imagens em si
+- Para preservar tudo: mantenha disco persistente ativo no Render
 
 ### Rodar localmente
 
@@ -81,11 +98,76 @@ Sem disco: exporte backup pelo site (Modo Edição → Exportar backup) de vez e
 - `PUT /api/memories/:id` — atualiza uma memória
 - `DELETE /api/memories/:id` — remove uma memória
 - `POST /api/upload` — faz upload de imagem
+- `POST /api/memories/import` — importa lista de memórias (JSON)
+- `POST /api/restore-backup-zip` — restaura backup completo em ZIP com imagens
+- `GET /api/backup/info` — informações sobre backup e imagens (debug)
+- `GET /api/backup/download` — download de backup completo em ZIP (com fotos)
 - `GET /api/health` — verifica se o servidor está online
 
-## Por que não Vercel?
+## 📦 Sistema de Backup
 
-A Vercel é ótima para sites estáticos, mas **não guarda arquivos no servidor**.
-Adaptar este projeto para Vercel exigiria reescrever o backend (serverless + Vercel Blob),
-configurar storage extra e tratar uploads de forma diferente — mais complexo sem benefício claro
-para este tipo de app.
+### Opção 1: Exportar backup JSON
+- Clique em **Modo Edição** → **Exportar backup**
+- Baixa arquivo `.json` com todas as memórias
+- ⚠️ Imagens **NÃO são incluídas**, apenas links
+
+### Opção 2: Exportar Completo com Fotos (NOVO!)
+- Clique em **Modo Edição** → **Exportar completo c/ fotos**
+- Baixa arquivo `.zip` com:
+  - `memories.json` (lista de memórias)
+  - `uploads/` (pasta com TODAS as imagens)
+  - `README.txt` (instruções de restauração)
+- ✅ **Tudo incluído!**
+
+### Como restaurar um backup
+
+#### Restaurar JSON (dados apenas)
+1. Vá em **Modo Edição**
+2. Clique em **Importar backup**
+3. Selecione arquivo `.json`
+4. Confirme — imagens usarão links anteriores
+
+#### Restaurar ZIP (dados + fotos) — NOVO!
+1. Vá em **Modo Edição**
+2. Clique em **Importar backup**
+3. Selecione arquivo `.zip`
+4. Confirme — **tudo é restaurado automaticamente** ✅
+   - Todas as memórias retornam
+   - Todas as fotos são copiadas para o servidor
+   - Links das imagens atualizam automaticamente
+
+**💡 DICA:** Use o ZIP para restauração completa, JSON apenas para backup rápido.
+
+## ❓ Dúvidas Frequentes
+
+### Os pins ficam salvos mesmo que eu não abra o site por dias?
+
+**SIM! Mas depende do plano escolhido no Render:**
+
+#### ✅ Plano Starter com Disco (~US$7/mês)
+- **Sim, ficam salvos para sempre!**
+- Mesmo que o servidor reinicie
+- Mesmo que você não abra o site por semanas
+- As imagens também permanecem
+
+#### ❌ Plano Gratuito
+- **NÃO ficam salvos!**
+- A cada restart do servidor (~15 min de inatividade), tudo é perdido
+- Incluindo fotos e pins
+- Use o backup JSON ou ZIP periodicamente como segurança
+
+### Como saber qual plano estou usando?
+
+1. Acesse [render.com](https://render.com)
+2. Clique no seu serviço "nossa-historia"
+3. Procure por **"Plan"** ou **"Disk"** na página
+4. Se vir **"Starter"** e **"nossa-historia-dados"**: ✅ você tem disco persistente
+5. Se vir **"Free"** e nenhum disco listado: ❌ você está no gratuito
+
+### Posso mudar do plano gratuito para Starter?
+
+**Sim!** No Render:
+1. Vá em Settings do serviço
+2. Clique em "Change Plan"
+3. Escolha **Starter** e adicione o disco (2GB)
+4. Confirme — pronto, dados ficam salvos!

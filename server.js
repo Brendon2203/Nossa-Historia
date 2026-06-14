@@ -3,6 +3,8 @@ const multer = require('multer');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const archiver = require('archiver');
+const unzipper = require('unzipper');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -96,12 +98,81 @@ const upload = multer({
   },
 });
 
+// Multer para aceitar ZIPs (sem filtro de tipo)
+const uploadZip = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 50 * 1024 * 1024 }, // 50MB para ZIPs
+});
+
 app.use(express.json({ limit: '1mb' }));
 app.use('/uploads', express.static(UPLOADS_DIR));
 app.use(express.static(ROOT_DIR));
 
 app.get('/api/health', (_req, res) => {
   res.json({ ok: true, storage: 'filesystem' });
+});
+
+// Endpoint para backup com informações completas
+app.get('/api/backup/info', (_req, res) => {
+  const memories = readMemories();
+  const uploadedImages = [];
+  
+  // Lista todas as imagens enviadas pelo usuário
+  if (fs.existsSync(UPLOADS_DIR)) {
+    const files = fs.readdirSync(UPLOADS_DIR);
+    uploadedImages.push(...files);
+  }
+
+  res.json({
+    timestamp: new Date().toISOString(),
+    totalMemories: memories.length,
+    memoriesWithUploadedImages: memories.filter(m => isLocalUpload(m.image)).length,
+    uploadedImages: uploadedImages,
+    backupNote: 'IMPORTANTE: O backup em JSON salva apenas os LINKS das imagens. As imagens de upload local (uploads/) estão armazenadas no servidor Render se o disco persistente estiver ativo.'
+  });
+});
+
+// Endpoint para backup completo em ZIP (com fotos)
+app.get('/api/backup/download', (req, res) => {
+  try {
+    const memories = readMemories();
+    const timestamp = new Date().toISOString().slice(0, 10);
+    
+    // Criar um arquivo ZIP
+    const archive = archiver('zip', { zlib: { level: 9 } });
+    
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', `attachment; filename="nossa-historia-completo-${timestamp}.zip"`);
+    
+    archive.pipe(res);
+    
+    // Adicionar memories.json
+    const jsonData = JSON.stringify(memories, null, 2);
+    archive.append(jsonData, { name: 'memories.json' });
+    
+    // Adicionar README com instruções
+    const readme = `BACKUP COMPLETO - Nossa História\nData: ${new Date().toISOString()}\n\n📁 Conteúdo:\n- memories.json: lista de todas as memórias com links e informações\n- uploads/: pasta com todas as imagens enviadas\n\n💾 Como restaurar:\n1. Abra o site em Modo Edição\n2. Clique em "Importar backup"\n3. Selecione o arquivo memories.json\n\n⚠️ Nota: Para restaurar as imagens também, você precisa:\n- Usar disco persistente no Render (plano Starter)\n- Copiar manualmente a pasta uploads/ ou fazer upload novamente\n\nOu recomendado:\n- Mantenha este ZIP como backup seguro\n- Use o disco persistente do Render para guardar tudo automaticamente`;
+    archive.append(readme, { name: 'README.txt' });
+    
+    // Adicionar todas as imagens da pasta uploads/
+    if (fs.existsSync(UPLOADS_DIR)) {
+      const files = fs.readdirSync(UPLOADS_DIR);
+      files.forEach(file => {
+        const filePath = path.join(UPLOADS_DIR, file);
+        if (fs.statSync(filePath).isFile()) {
+          archive.file(filePath, { name: `uploads/${file}` });
+        }
+      });
+    }
+    
+    archive.finalize();
+    
+    archive.on('error', (err) => {
+      res.status(500).json({ error: 'Erro ao criar backup: ' + err.message });
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Erro ao processar backup: ' + err.message });
+  }
 });
 
 app.get('/api/memories', (_req, res) => {
@@ -166,6 +237,95 @@ app.delete('/api/memories/:id', (req, res) => {
   writeMemories(memories);
   deleteLocalImage(removed.image);
   res.json({ ok: true });
+});
+
+// Endpoint para restaurar backup completo em ZIP (com fotos)
+app.post('/api/restore-backup-zip', (req, res) => {
+  uploadZip.single('zipFile')(req, res, async (err) => {
+    if (err) {
+      return res.status(400).json({ error: 'Erro no upload: ' + err.message });
+    }
+    if (!req.file) {
+      return res.status(400).json({ error: 'Nenhum arquivo ZIP enviado.' });
+    }
+
+    const tempZipPath = path.join(ROOT_DIR, 'temp-' + Date.now() + '.zip');
+    const tempDir = path.join(ROOT_DIR, 'temp-restore-' + Date.now());
+
+    try {
+      // Salvar arquivo em memória para disco temporário
+      fs.writeFileSync(tempZipPath, req.file.buffer);
+
+      // Criar diretório temporário
+      if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
+
+      // Extrair ZIP
+      await new Promise((resolve, reject) => {
+        fs.createReadStream(tempZipPath)
+          .pipe(unzipper.Extract({ path: tempDir }))
+          .on('finish', resolve)
+          .on('error', reject);
+      });
+
+      // Ler memories.json do ZIP
+      const memoriesPath = path.join(tempDir, 'memories.json');
+      if (!fs.existsSync(memoriesPath)) {
+        throw new Error('Arquivo memories.json não encontrado no ZIP.');
+      }
+
+      const imported = JSON.parse(fs.readFileSync(memoriesPath, 'utf8'));
+      if (!Array.isArray(imported)) {
+        throw new Error('memories.json deve conter um array.');
+      }
+
+      // Deletar imagens antigas
+      const current = readMemories();
+      current.forEach((m) => deleteLocalImage(m.image));
+
+      // Copiar imagens do ZIP
+      const uploadsSource = path.join(tempDir, 'uploads');
+      if (fs.existsSync(uploadsSource)) {
+        const files = fs.readdirSync(uploadsSource);
+        files.forEach(file => {
+          const srcFile = path.join(uploadsSource, file);
+          const destFile = path.join(UPLOADS_DIR, file);
+          if (fs.statSync(srcFile).isFile()) {
+            fs.copyFileSync(srcFile, destFile);
+          }
+        });
+      }
+
+      // Importar memórias
+      const cleaned = imported.map((m) => ({
+        id: m.id || generateId(),
+        label: m.label?.trim() || '',
+        title: m.title?.trim() || '',
+        description: m.description?.trim() || '',
+        image: m.image || '',
+        spotifyEmbed: m.spotifyEmbed || '',
+        lat: Number(m.lat),
+        lng: Number(m.lng),
+      }));
+
+      writeMemories(cleaned);
+
+      // Limpeza
+      if (fs.existsSync(tempZipPath)) fs.unlinkSync(tempZipPath);
+      if (fs.existsSync(tempDir)) fs.rmSync(tempDir, { recursive: true });
+
+      res.json({
+        success: true,
+        totalMemories: cleaned.length,
+        memoriesWithImages: cleaned.filter(m => m.image.startsWith('/uploads/')).length,
+        memories: cleaned
+      });
+    } catch (error) {
+      // Limpeza em caso de erro
+      if (fs.existsSync(tempZipPath)) fs.unlinkSync(tempZipPath);
+      if (fs.existsSync(tempDir)) fs.rmSync(tempDir, { recursive: true });
+      res.status(400).json({ error: 'Erro ao restaurar backup: ' + error.message });
+    }
+  });
 });
 
 app.post('/api/memories/import', (req, res) => {

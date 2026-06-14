@@ -182,6 +182,7 @@ function setupEventListeners() {
   document.getElementById('search-tab-places').addEventListener('click', () => setSearchMode('places'));
   document.getElementById('search-tab-pins').addEventListener('click', () => setSearchMode('pins'));
   document.getElementById('export-data-btn').addEventListener('click', exportData);
+  document.getElementById('export-complete-btn').addEventListener('click', exportCompleteBackup);
   document.getElementById('import-data-btn').addEventListener('click', () => document.getElementById('import-file-input').click());
   document.getElementById('import-file-input').addEventListener('change', importData);
 
@@ -482,6 +483,13 @@ function hideSearchResults() {
 // ============================================
 
 function exportData() {
+  // Aviso sobre backup e imagens
+  const uploadedImages = memories.filter(m => m.image?.startsWith('/uploads/')).length;
+  if (uploadedImages > 0) {
+    const msg = `⚠️ AVISO IMPORTANTE:\n\nVocê tem ${uploadedImages} memória(s) com imagens enviadas. O arquivo JSON de backup salva apenas os LINKS das imagens, NÃO as imagens em si.\n\nPara garantir que tudo seja salvo:\n✅ Mantenha o disco persistente ATIVO no Render\n✅ Se usar o plano gratuito, as imagens DESAPARECERÃO ao redeployar\n\nContinuar com o backup JSON?\n\n💡 DICA: Clique em "Exportar Completo com Fotos" para baixar um ZIP com tudo!`;
+    if (!confirm(msg)) return;
+  }
+
   const data = JSON.stringify(memories, null, 2);
   const blob = new Blob([data], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
@@ -492,10 +500,79 @@ function exportData() {
   URL.revokeObjectURL(url);
 }
 
+async function exportCompleteBackup() {
+  try {
+    const uploadedImages = memories.filter(m => m.image?.startsWith('/uploads/')).length;
+    if (uploadedImages === 0) {
+      alert('⚠️ Você não tem imagens enviadas. Use "Exportar backup" para salvar em JSON.');
+      return;
+    }
+
+    const msg = `📦 Backup Completo com Fotos\n\nVocê tem ${uploadedImages} imagem(s) salva(s).\nIsso criará um arquivo ZIP com:\n✅ Arquivo memories.json\n✅ Pasta uploads/ com todas as imagens\n✅ README com instruções\n\nBaixar agora?`;
+    if (!confirm(msg)) return;
+
+    // Download do ZIP via API
+    const link = document.createElement('a');
+    link.href = '/api/backup/download';
+    link.download = `nossa-historia-completo-${new Date().toISOString().slice(0, 10)}.zip`;
+    link.click();
+
+    alert('✅ Backup completo baixado com sucesso!');
+  } catch (err) {
+    alert('❌ Erro ao baixar backup: ' + err.message);
+  }
+}
+
 function importData(e) {
   const file = e.target.files[0];
   if (!file) return;
 
+  // Detectar tipo de arquivo
+  const isZip = file.name.endsWith('.zip') || file.type === 'application/zip';
+  
+  if (isZip) {
+    importZipBackup(file);
+  } else {
+    importJsonBackup(file);
+  }
+}
+
+async function importZipBackup(file) {
+  try {
+    const msg = `📦 Restaurar Backup Completo\n\nIsso vai:\n✅ Restaurar todas as memórias\n✅ Restaurar TODAS as imagens\n✅ Substituir os dados atuais\n\nContinuar?`;
+    if (!confirm(msg)) return;
+
+    const formData = new FormData();
+    formData.append('zipFile', file);
+
+    const res = await fetch('/api/restore-backup-zip', {
+      method: 'POST',
+      body: formData
+    });
+
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || 'Erro ao restaurar backup');
+    }
+
+    const result = await res.json();
+    
+    // Recarregar memórias
+    await loadMemories();
+    renderAllMarkers();
+    
+    if (memories.length > 0) {
+      map.fitBounds(L.latLngBounds(memories.map(m => [m.lat, m.lng])), { padding: [50, 50], maxZoom: 14 });
+    }
+
+    alert(`✅ Backup restaurado com sucesso!\n\n📊 Dados importados:\n• ${result.totalMemories} memória(s)\n• ${result.memoriesWithImages} com imagem(s)\n\n🖼️ Todas as fotos foram restauradas!`);
+  } catch (err) {
+    alert('❌ Erro ao restaurar ZIP: ' + err.message);
+  }
+  document.getElementById('import-file-input').value = '';
+}
+
+function importJsonBackup(file) {
   const reader = new FileReader();
   reader.onload = async (ev) => {
     try {
@@ -514,7 +591,7 @@ function importData(e) {
     } catch {
       alert('Erro ao importar. Verifique se o servidor está rodando e o arquivo é válido.');
     }
-    e.target.value = '';
+    document.getElementById('import-file-input').value = '';
   };
   reader.readAsText(file);
 }
