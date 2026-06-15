@@ -138,6 +138,44 @@ O arquivo `render.yaml` **já está configurado com disco ativado** — basta es
 
 **💡 DICA:** Use o ZIP para restauração completa, JSON apenas para backup rápido.
 
+## ☁️ Backup automático do Google Drive
+
+Na inicialização, o servidor **baixa automaticamente** o backup mais recente da pasta do Drive e restaura memórias + fotos.
+
+**Pasta padrão:** [Google Drive - Nossa História](https://drive.google.com/drive/folders/1g0LxsS7Shd3-xWLE-F6kzEHj4FpO2iAX)
+
+### Como manter o site sempre atualizado
+
+1. No site, vá em **Modo Edição** → **Exportar completo c/ fotos**
+2. Faça upload do arquivo `.zip` na pasta do Drive acima
+3. Se houver mais de um ZIP, o servidor usa o **mais recente** (com API key) ou o **primeiro .zip** encontrado na pasta pública
+4. A cada restart ou redeploy no Render, o backup é restaurado automaticamente
+
+### Configuração da pasta no Drive
+
+A pasta precisa estar **pública** (qualquer pessoa com o link pode ver):
+
+1. Abra a pasta no Google Drive
+2. Clique em **Compartilhar**
+3. Em **Acesso geral**, escolha **Qualquer pessoa com o link** → **Leitor**
+
+### Variáveis de ambiente
+
+| Variável | Descrição |
+|---|---|
+| `RESTORE_BACKUP_ON_STARTUP` | `true` (padrão) restaura na inicialização; `false` desativa |
+| `GOOGLE_DRIVE_FOLDER_ID` | ID da pasta (já configurado no `render.yaml`) |
+| `GOOGLE_DRIVE_BACKUP_FILE_ID` | (Opcional) ID fixo de um ZIP específico |
+| `GOOGLE_DRIVE_API_KEY` | (Opcional) Chave da Google Drive API para listagem mais confiável |
+
+### Desenvolvimento local
+
+Para rodar sem baixar do Drive:
+
+```bash
+RESTORE_BACKUP_ON_STARTUP=false npm start
+```
+
 ## ❓ Dúvidas Frequentes
 
 ### Os pins ficam salvos mesmo que eu não abra o site por dias?

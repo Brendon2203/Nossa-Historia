@@ -9,6 +9,14 @@ services:
     envVars:
       - key: NODE_VERSION
         value: "20"
+      - key: DATA_DIR
+        value: /var/data/memories
+      - key: UPLOADS_DIR
+        value: /var/data/uploads
+      - key: RESTORE_BACKUP_ON_STARTUP
+        value: "true"
+      - key: GOOGLE_DRIVE_FOLDER_ID
+        value: 1g0LxsS7Shd3-xWLE-F6kzEHj4FpO2iAX
 
     # ── Disco persistente (plano Starter: ~US$7/mês) ──
     # Com disco, fotos e pins não se perdem ao redeployar.
@@ -16,9 +24,3 @@ services:
       name: nossa-historia-dados
       mountPath: /var/data
       sizeGB: 2
-
-    envVars:
-      - key: DATA_DIR
-        value: /var/data/memories
-      - key: UPLOADS_DIR
-        value: /var/data/uploads

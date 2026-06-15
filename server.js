@@ -4,7 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const archiver = require('archiver');
-const unzipper = require('unzipper');
+const { syncBackupFromDrive, restoreFromZipBuffer } = require('./driveBackup');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -80,6 +80,16 @@ function deleteLocalImage(imagePath) {
   const filePath = path.join(ROOT_DIR, imagePath);
   if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
 }
+
+const restoreContext = {
+  dataFile: DATA_FILE,
+  uploadsDir: UPLOADS_DIR,
+  rootDir: ROOT_DIR,
+  readMemories,
+  writeMemories,
+  deleteLocalImage,
+  generateId,
+};
 
 const storage = multer.diskStorage({
   destination: UPLOADS_DIR,
@@ -249,80 +259,16 @@ app.post('/api/restore-backup-zip', (req, res) => {
       return res.status(400).json({ error: 'Nenhum arquivo ZIP enviado.' });
     }
 
-    const tempZipPath = path.join(ROOT_DIR, 'temp-' + Date.now() + '.zip');
-    const tempDir = path.join(ROOT_DIR, 'temp-restore-' + Date.now());
-
     try {
-      // Salvar arquivo em memória para disco temporário
-      fs.writeFileSync(tempZipPath, req.file.buffer);
-
-      // Criar diretório temporário
-      if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
-
-      // Extrair ZIP
-      await new Promise((resolve, reject) => {
-        fs.createReadStream(tempZipPath)
-          .pipe(unzipper.Extract({ path: tempDir }))
-          .on('finish', resolve)
-          .on('error', reject);
-      });
-
-      // Ler memories.json do ZIP
-      const memoriesPath = path.join(tempDir, 'memories.json');
-      if (!fs.existsSync(memoriesPath)) {
-        throw new Error('Arquivo memories.json não encontrado no ZIP.');
-      }
-
-      const imported = JSON.parse(fs.readFileSync(memoriesPath, 'utf8'));
-      if (!Array.isArray(imported)) {
-        throw new Error('memories.json deve conter um array.');
-      }
-
-      // Deletar imagens antigas
-      const current = readMemories();
-      current.forEach((m) => deleteLocalImage(m.image));
-
-      // Copiar imagens do ZIP
-      const uploadsSource = path.join(tempDir, 'uploads');
-      if (fs.existsSync(uploadsSource)) {
-        const files = fs.readdirSync(uploadsSource);
-        files.forEach(file => {
-          const srcFile = path.join(uploadsSource, file);
-          const destFile = path.join(UPLOADS_DIR, file);
-          if (fs.statSync(srcFile).isFile()) {
-            fs.copyFileSync(srcFile, destFile);
-          }
-        });
-      }
-
-      // Importar memórias
-      const cleaned = imported.map((m) => ({
-        id: m.id || generateId(),
-        label: m.label?.trim() || '',
-        title: m.title?.trim() || '',
-        description: m.description?.trim() || '',
-        image: m.image || '',
-        spotifyEmbed: m.spotifyEmbed || '',
-        lat: Number(m.lat),
-        lng: Number(m.lng),
-      }));
-
-      writeMemories(cleaned);
-
-      // Limpeza
-      if (fs.existsSync(tempZipPath)) fs.unlinkSync(tempZipPath);
-      if (fs.existsSync(tempDir)) fs.rmSync(tempDir, { recursive: true });
-
+      const result = await restoreFromZipBuffer(req.file.buffer, restoreContext);
+      const memories = readMemories();
       res.json({
         success: true,
-        totalMemories: cleaned.length,
-        memoriesWithImages: cleaned.filter(m => m.image.startsWith('/uploads/')).length,
-        memories: cleaned
+        totalMemories: result.totalMemories,
+        memoriesWithImages: result.memoriesWithImages,
+        memories,
       });
     } catch (error) {
-      // Limpeza em caso de erro
-      if (fs.existsSync(tempZipPath)) fs.unlinkSync(tempZipPath);
-      if (fs.existsSync(tempDir)) fs.rmSync(tempDir, { recursive: true });
       res.status(400).json({ error: 'Erro ao restaurar backup: ' + error.message });
     }
   });
@@ -364,6 +310,21 @@ app.post('/api/upload', (req, res) => {
   });
 });
 
-app.listen(PORT, () => {
-  console.log(`Nossa História rodando em http://localhost:${PORT}`);
-});
+async function startServer() {
+  const shouldRestoreFromDrive = process.env.RESTORE_BACKUP_ON_STARTUP !== 'false';
+
+  if (shouldRestoreFromDrive) {
+    try {
+      await syncBackupFromDrive(restoreContext);
+    } catch (error) {
+      console.warn('[Drive] Não foi possível restaurar o backup na inicialização:', error.message);
+      console.warn('[Drive] O servidor vai iniciar com os dados locais ou padrão.');
+    }
+  }
+
+  app.listen(PORT, () => {
+    console.log(`Nossa História rodando em http://localhost:${PORT}`);
+  });
+}
+
+startServer();
