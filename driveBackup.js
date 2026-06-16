@@ -17,9 +17,24 @@ function getBackupFilename() {
 }
 
 function getServiceAccountCredentials() {
+  // Tenta ler do formato Base64 (mais seguro)
+  if (process.env.GOOGLE_SERVICE_ACCOUNT_BASE64) {
+    try {
+      const jsonStr = Buffer.from(process.env.GOOGLE_SERVICE_ACCOUNT_BASE64, 'base64').toString('utf-8');
+      return JSON.parse(jsonStr);
+    } catch (e) {
+      console.error("[Drive] Erro ao decodificar GOOGLE_SERVICE_ACCOUNT_BASE64:", e.message);
+    }
+  }
+
+  // Fallback para o JSON direto (caso você ainda queira tentar usar)
   const json = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
   if (json) {
-    return JSON.parse(json);
+    try {
+      return JSON.parse(json);
+    } catch (e) {
+      console.error("[Drive] Erro ao fazer parse do GOOGLE_SERVICE_ACCOUNT_JSON:", e.message);
+    }
   }
 
   const keyFile = process.env.GOOGLE_SERVICE_ACCOUNT_KEY_FILE;
