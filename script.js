@@ -483,41 +483,45 @@ function hideSearchResults() {
 // ============================================
 
 function exportData() {
-  // Aviso sobre backup e imagens
-  const uploadedImages = memories.filter(m => m.image?.startsWith('/uploads/')).length;
-  if (uploadedImages > 0) {
-    const msg = `⚠️ AVISO IMPORTANTE:\n\nVocê tem ${uploadedImages} memória(s) com imagens enviadas. O arquivo JSON de backup salva apenas os LINKS das imagens, NÃO as imagens em si.\n\nPara garantir que tudo seja salvo:\n✅ Mantenha o disco persistente ATIVO no Render\n✅ Se usar o plano gratuito, as imagens DESAPARECERÃO ao redeployar\n\nContinuar com o backup JSON?\n\n💡 DICA: Clique em "Exportar Completo com Fotos" para baixar um ZIP com tudo!`;
-    if (!confirm(msg)) return;
-  }
+  saveBackupToDrive();
+}
 
-  const data = JSON.stringify(memories, null, 2);
-  const blob = new Blob([data], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `nossa-historia-backup-${new Date().toISOString().slice(0, 10)}.json`;
-  a.click();
-  URL.revokeObjectURL(url);
+async function saveBackupToDrive() {
+  const uploadedImages = memories.filter((memory) => memory.image?.startsWith('/uploads/')).length;
+  const msg = `☁️ Salvar backup no Google Drive\n\nIsso vai:\n✅ Criar ZIP com ${memories.length} memória(s) e ${uploadedImages} foto(s)\n✅ Enviar para a pasta do Drive\n✅ Atualizar o backup mais recente do site\n\nContinuar?`;
+  if (!confirm(msg)) return;
+
+  const btn = document.getElementById('export-data-btn');
+  const originalHtml = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '<span>Salvando no Drive...</span>';
+
+  try {
+    const res = await fetch('/api/backup/save-drive', { method: 'POST' });
+    const result = await res.json();
+    if (!res.ok) throw new Error(result.error || 'Erro ao salvar no Drive');
+
+    alert(
+      `✅ Backup salvo no Google Drive!\n\n📊 ${result.totalMemories} memória(s)\n📷 ${result.memoriesWithImages} foto(s)\n📁 ${result.fileName}\n\nNa próxima vez que o site abrir, ele carregará este backup automaticamente.`
+    );
+  } catch (err) {
+    alert('❌ Erro ao salvar no Drive: ' + err.message);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = originalHtml;
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+  }
 }
 
 async function exportCompleteBackup() {
   try {
-    const uploadedImages = memories.filter(m => m.image?.startsWith('/uploads/')).length;
-    if (uploadedImages === 0) {
-      alert('⚠️ Você não tem imagens enviadas. Use "Exportar backup" para salvar em JSON.');
-      return;
-    }
-
-    const msg = `📦 Backup Completo com Fotos\n\nVocê tem ${uploadedImages} imagem(s) salva(s).\nIsso criará um arquivo ZIP com:\n✅ Arquivo memories.json\n✅ Pasta uploads/ com todas as imagens\n✅ README com instruções\n\nBaixar agora?`;
+    const msg = `📦 Baixar cópia local\n\nIsso baixa um ZIP com memórias e fotos para o seu computador.\n\nO backup principal fica no Google Drive (botão "Salvar backup no Drive").\n\nContinuar?`;
     if (!confirm(msg)) return;
 
-    // Download do ZIP via API
     const link = document.createElement('a');
     link.href = '/api/backup/download';
     link.download = `nossa-historia-completo-${new Date().toISOString().slice(0, 10)}.zip`;
     link.click();
-
-    alert('✅ Backup completo baixado com sucesso!');
   } catch (err) {
     alert('❌ Erro ao baixar backup: ' + err.message);
   }

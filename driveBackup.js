@@ -1,8 +1,105 @@
 const fs = require('fs');
 const path = require('path');
+const archiver = require('archiver');
 const unzipper = require('unzipper');
+const { google } = require('googleapis');
 
 const DEFAULT_FOLDER_ID = '1g0LxsS7Shd3-xWLE-F6kzEHj4FpO2iAX';
+const DEFAULT_BACKUP_FILENAME = 'nossa-historia-backup.zip';
+const DRIVE_SCOPES = ['https://www.googleapis.com/auth/drive'];
+
+function getFolderId() {
+  return process.env.GOOGLE_DRIVE_FOLDER_ID || DEFAULT_FOLDER_ID;
+}
+
+function getBackupFilename() {
+  return process.env.GOOGLE_DRIVE_BACKUP_FILENAME || DEFAULT_BACKUP_FILENAME;
+}
+
+function getServiceAccountCredentials() {
+  const json = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
+  if (json) {
+    return JSON.parse(json);
+  }
+
+  const keyFile = process.env.GOOGLE_SERVICE_ACCOUNT_KEY_FILE;
+  if (keyFile && fs.existsSync(keyFile)) {
+    return keyFile;
+  }
+
+  return null;
+}
+
+function hasDriveUploadCredentials() {
+  return Boolean(getServiceAccountCredentials());
+}
+
+async function getDriveClient() {
+  const credentials = getServiceAccountCredentials();
+  if (!credentials) {
+    throw new Error(
+      'Credenciais do Google Drive não configuradas. Defina GOOGLE_SERVICE_ACCOUNT_JSON no Render.'
+    );
+  }
+
+  const auth = new google.auth.GoogleAuth({
+    credentials: typeof credentials === 'string' ? undefined : credentials,
+    keyFile: typeof credentials === 'string' ? credentials : undefined,
+    scopes: DRIVE_SCOPES,
+  });
+
+  return google.drive({ version: 'v3', auth });
+}
+
+function createBackupZipBuffer({ memories, uploadsDir }) {
+  return new Promise((resolve, reject) => {
+    const archive = archiver('zip', { zlib: { level: 9 } });
+    const chunks = [];
+
+    archive.on('data', (chunk) => chunks.push(chunk));
+    archive.on('end', () => resolve(Buffer.concat(chunks)));
+    archive.on('error', reject);
+
+    archive.append(JSON.stringify(memories, null, 2), { name: 'memories.json' });
+
+    const readme = `BACKUP COMPLETO - Nossa História
+Data: ${new Date().toISOString()}
+
+Conteúdo:
+- memories.json: lista de memórias
+- uploads/: fotos enviadas
+
+Este arquivo é atualizado automaticamente pelo site Nossa História.`;
+    archive.append(readme, { name: 'README.txt' });
+
+    if (fs.existsSync(uploadsDir)) {
+      fs.readdirSync(uploadsDir).forEach((file) => {
+        const filePath = path.join(uploadsDir, file);
+        if (fs.statSync(filePath).isFile()) {
+          archive.file(filePath, { name: `uploads/${file}` });
+        }
+      });
+    }
+
+    archive.finalize();
+  });
+}
+
+async function listZipFilesViaServiceAccount(folderId) {
+  const drive = await getDriveClient();
+  const response = await drive.files.list({
+    q: `'${folderId}' in parents and trashed = false`,
+    fields: 'files(id,name,modifiedTime,mimeType)',
+    orderBy: 'modifiedTime desc',
+    supportsAllDrives: true,
+    includeItemsFromAllDrives: true,
+  });
+
+  return (response.data.files || []).filter((file) => {
+    const name = (file.name || '').toLowerCase();
+    return name.endsWith('.zip') || file.mimeType === 'application/zip';
+  });
+}
 
 async function listZipFilesInFolder(folderId, apiKey) {
   const query = encodeURIComponent(`'${folderId}' in parents and trashed = false`);
@@ -45,11 +142,13 @@ async function listZipFilesFromPublicFolder(folderId) {
 
     const idMatch = block.match(/id="entry-([a-zA-Z0-9_-]+)"/) || block.match(/\/file\/d\/([a-zA-Z0-9_-]+)\//);
     const titleMatch = block.match(/flip-entry-title[^>]*>([^<]+)</);
+    const dateMatch = block.match(/flip-entry-last-modified[^>]*>([^<]+)</);
 
     if (idMatch) {
       files.push({
         id: idMatch[1],
         name: titleMatch?.[1]?.trim() || `${idMatch[1]}.zip`,
+        modifiedTime: dateMatch?.[1]?.trim() || '',
       });
     }
   }
@@ -58,10 +157,11 @@ async function listZipFilesFromPublicFolder(folderId) {
     throw new Error('Nenhum arquivo .zip encontrado na pasta pública do Drive.');
   }
 
+  files.sort((a, b) => String(b.modifiedTime).localeCompare(String(a.modifiedTime)));
   return files;
 }
 
-async function downloadDriveFile(fileId) {
+async function downloadDriveFilePublic(fileId) {
   const baseUrl = `https://drive.google.com/uc?export=download&id=${fileId}`;
   let response = await fetch(baseUrl, { redirect: 'follow' });
   let buffer = Buffer.from(await response.arrayBuffer());
@@ -85,22 +185,105 @@ async function downloadDriveFile(fileId) {
   return buffer;
 }
 
-async function resolveBackupFileId(options) {
-  const {
-    folderId = DEFAULT_FOLDER_ID,
-    fileId,
-    apiKey,
-  } = options;
+async function downloadDriveFileViaApi(fileId) {
+  const drive = await getDriveClient();
+  const response = await drive.files.get(
+    { fileId, alt: 'media', supportsAllDrives: true },
+    { responseType: 'arraybuffer' }
+  );
+  return Buffer.from(response.data);
+}
+
+async function downloadDriveFile(fileId) {
+  if (hasDriveUploadCredentials()) {
+    return downloadDriveFileViaApi(fileId);
+  }
+  return downloadDriveFilePublic(fileId);
+}
+
+async function resolveBackupFileId(options = {}) {
+  const folderId = options.folderId || getFolderId();
+  const fileId = options.fileId || process.env.GOOGLE_DRIVE_BACKUP_FILE_ID;
+  const apiKey = options.apiKey || process.env.GOOGLE_DRIVE_API_KEY;
 
   if (fileId) {
     return { id: fileId, name: 'backup configurado' };
   }
 
-  const zipFiles = apiKey
-    ? await listZipFilesInFolder(folderId, apiKey)
-    : await listZipFilesFromPublicFolder(folderId);
+  if (hasDriveUploadCredentials()) {
+    const zipFiles = await listZipFilesViaServiceAccount(folderId);
+    if (zipFiles.length === 0) {
+      throw new Error('Nenhum arquivo .zip encontrado na pasta do Drive.');
+    }
+    return zipFiles[0];
+  }
 
+  if (apiKey) {
+    const zipFiles = await listZipFilesInFolder(folderId, apiKey);
+    return zipFiles[0];
+  }
+
+  const zipFiles = await listZipFilesFromPublicFolder(folderId);
   return zipFiles[0];
+}
+
+async function deleteOtherZipBackups(folderId, keepFileId) {
+  const drive = await getDriveClient();
+  const zipFiles = await listZipFilesViaServiceAccount(folderId);
+
+  await Promise.all(
+    zipFiles
+      .filter((file) => file.id !== keepFileId)
+      .map((file) =>
+        drive.files.delete({ fileId: file.id, supportsAllDrives: true }).catch((error) => {
+          console.warn(`[Drive] Não foi possível remover backup antigo ${file.name}:`, error.message);
+        })
+      )
+  );
+}
+
+async function uploadBackupToDrive(buffer, fileName) {
+  const drive = await getDriveClient();
+  const folderId = getFolderId();
+  const existing = await listZipFilesViaServiceAccount(folderId);
+  const sameName = existing.find((file) => file.name === fileName);
+
+  if (sameName) {
+    const response = await drive.files.update({
+      fileId: sameName.id,
+      media: {
+        mimeType: 'application/zip',
+        body: buffer,
+      },
+      fields: 'id,name,modifiedTime',
+      supportsAllDrives: true,
+    });
+
+    if (process.env.KEEP_OLD_DRIVE_BACKUPS !== 'true') {
+      await deleteOtherZipBackups(folderId, response.data.id);
+    }
+
+    return response.data;
+  }
+
+  const response = await drive.files.create({
+    requestBody: {
+      name: fileName,
+      parents: [folderId],
+    },
+    media: {
+      mimeType: 'application/zip',
+      body: buffer,
+    },
+    fields: 'id,name,modifiedTime',
+    supportsAllDrives: true,
+  });
+
+  if (process.env.KEEP_OLD_DRIVE_BACKUPS !== 'true') {
+    await deleteOtherZipBackups(folderId, response.data.id);
+  }
+
+  return response.data;
 }
 
 async function restoreFromZipBuffer(buffer, {
@@ -144,8 +327,7 @@ async function restoreFromZipBuffer(buffer, {
 
     const uploadsSource = path.join(tempDir, 'uploads');
     if (fs.existsSync(uploadsSource)) {
-      const files = fs.readdirSync(uploadsSource);
-      files.forEach((file) => {
+      fs.readdirSync(uploadsSource).forEach((file) => {
         const srcFile = path.join(uploadsSource, file);
         const destFile = path.join(uploadsDir, file);
         if (fs.statSync(srcFile).isFile()) {
@@ -178,12 +360,8 @@ async function restoreFromZipBuffer(buffer, {
 }
 
 async function syncBackupFromDrive(restoreContext) {
-  const folderId = process.env.GOOGLE_DRIVE_FOLDER_ID || DEFAULT_FOLDER_ID;
-  const fileId = process.env.GOOGLE_DRIVE_BACKUP_FILE_ID;
-  const apiKey = process.env.GOOGLE_DRIVE_API_KEY;
-
-  const backupFile = await resolveBackupFileId({ folderId, fileId, apiKey });
-  console.log(`[Drive] Baixando backup: ${backupFile.name} (${backupFile.id})`);
+  const backupFile = await resolveBackupFileId();
+  console.log(`[Drive] Baixando backup mais recente: ${backupFile.name} (${backupFile.id})`);
 
   const buffer = await downloadDriveFile(backupFile.id);
   const result = await restoreFromZipBuffer(buffer, restoreContext);
@@ -199,8 +377,29 @@ async function syncBackupFromDrive(restoreContext) {
   };
 }
 
+async function saveBackupToDrive({ readMemories, uploadsDir }) {
+  const memories = readMemories();
+  const fileName = getBackupFilename();
+  const buffer = await createBackupZipBuffer({ memories, uploadsDir });
+  const uploaded = await uploadBackupToDrive(buffer, fileName);
+
+  console.log(`[Drive] Backup enviado: ${uploaded.name} (${uploaded.id})`);
+
+  return {
+    fileName: uploaded.name,
+    fileId: uploaded.id,
+    modifiedTime: uploaded.modifiedTime,
+    totalMemories: memories.length,
+    memoriesWithImages: memories.filter((memory) => memory.image?.startsWith('/uploads/')).length,
+  };
+}
+
 module.exports = {
   DEFAULT_FOLDER_ID,
+  DEFAULT_BACKUP_FILENAME,
+  hasDriveUploadCredentials,
+  createBackupZipBuffer,
   syncBackupFromDrive,
+  saveBackupToDrive,
   restoreFromZipBuffer,
 };

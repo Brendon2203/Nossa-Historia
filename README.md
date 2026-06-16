@@ -101,7 +101,8 @@ O arquivo `render.yaml` **já está configurado com disco ativado** — basta es
 - `POST /api/memories/import` — importa lista de memórias (JSON)
 - `POST /api/restore-backup-zip` — restaura backup completo em ZIP com imagens
 - `GET /api/backup/info` — informações sobre backup e imagens (debug)
-- `GET /api/backup/download` — download de backup completo em ZIP (com fotos)
+- `POST /api/backup/save-drive` — salva backup completo (ZIP + fotos) no Google Drive
+- `GET /api/backup/download` — download local do backup completo em ZIP
 - `GET /api/health` — verifica se o servidor está online
 
 ## 📦 Sistema de Backup
@@ -140,37 +141,46 @@ O arquivo `render.yaml` **já está configurado com disco ativado** — basta es
 
 ## ☁️ Backup automático do Google Drive
 
-Na inicialização, o servidor **baixa automaticamente** o backup mais recente da pasta do Drive e restaura memórias + fotos.
+O site funciona em ciclo automático:
 
-**Pasta padrão:** [Google Drive - Nossa História](https://drive.google.com/drive/folders/1g0LxsS7Shd3-xWLE-F6kzEHj4FpO2iAX)
+1. **Ao abrir** → baixa o backup mais recente da pasta do Drive
+2. **Ao clicar em "Salvar backup no Drive"** → envia ZIP com memórias + fotos para a pasta
+3. **No próximo restart** → carrega a versão atualizada
 
-### Como manter o site sempre atualizado
+**Pasta:** [Google Drive - Nossa História](https://drive.google.com/drive/folders/1g0LxsS7Shd3-xWLE-F6kzEHj4FpO2iAX)
 
-1. No site, vá em **Modo Edição** → **Exportar completo c/ fotos**
-2. Faça upload do arquivo `.zip` na pasta do Drive acima
-3. Se houver mais de um ZIP, o servidor usa o **mais recente** (com API key) ou o **primeiro .zip** encontrado na pasta pública
-4. A cada restart ou redeploy no Render, o backup é restaurado automaticamente
+### Configurar envio automático para o Drive (obrigatório)
 
-### Configuração da pasta no Drive
+Para o botão **Salvar backup no Drive** funcionar, configure uma **Service Account** do Google:
 
-A pasta precisa estar **pública** (qualquer pessoa com o link pode ver):
-
-1. Abra a pasta no Google Drive
-2. Clique em **Compartilhar**
-3. Em **Acesso geral**, escolha **Qualquer pessoa com o link** → **Leitor**
+1. Acesse [Google Cloud Console](https://console.cloud.google.com/)
+2. Crie um projeto → **APIs & Services** → **Enable APIs** → ative **Google Drive API**
+3. **Credentials** → **Create Credentials** → **Service Account**
+4. Crie a conta → **Keys** → **Add Key** → **JSON** → baixe o arquivo
+5. Abra o JSON e copie o campo `client_email` (ex: `nossa-historia@projeto.iam.gserviceaccount.com`)
+6. No Google Drive, abra a pasta de backup → **Compartilhar** → adicione esse e-mail como **Editor**
+7. No Render, vá em **Environment** → adicione a variável:
+   - `GOOGLE_SERVICE_ACCOUNT_JSON` = cole o conteúdo inteiro do JSON (uma linha)
 
 ### Variáveis de ambiente
 
 | Variável | Descrição |
 |---|---|
-| `RESTORE_BACKUP_ON_STARTUP` | `true` (padrão) restaura na inicialização; `false` desativa |
-| `GOOGLE_DRIVE_FOLDER_ID` | ID da pasta (já configurado no `render.yaml`) |
-| `GOOGLE_DRIVE_BACKUP_FILE_ID` | (Opcional) ID fixo de um ZIP específico |
-| `GOOGLE_DRIVE_API_KEY` | (Opcional) Chave da Google Drive API para listagem mais confiável |
+| `GOOGLE_SERVICE_ACCOUNT_JSON` | JSON da Service Account (**obrigatório para salvar no Drive**) |
+| `RESTORE_BACKUP_ON_STARTUP` | `true` (padrão) — restaura na inicialização |
+| `GOOGLE_DRIVE_FOLDER_ID` | ID da pasta (já configurado) |
+| `GOOGLE_DRIVE_BACKUP_FILENAME` | Nome fixo do ZIP (`nossa-historia-backup.zip`) |
+| `KEEP_OLD_DRIVE_BACKUPS` | `true` para manter ZIPs antigos; padrão remove os antigos |
 
 ### Desenvolvimento local
 
-Para rodar sem baixar do Drive:
+Salvar no Drive localmente (com arquivo de credenciais):
+
+```bash
+GOOGLE_SERVICE_ACCOUNT_KEY_FILE=./google-service-account.json npm start
+```
+
+Sem baixar do Drive na inicialização:
 
 ```bash
 RESTORE_BACKUP_ON_STARTUP=false npm start

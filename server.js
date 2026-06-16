@@ -3,8 +3,13 @@ const multer = require('multer');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
-const archiver = require('archiver');
-const { syncBackupFromDrive, restoreFromZipBuffer } = require('./driveBackup');
+const {
+  syncBackupFromDrive,
+  saveBackupToDrive,
+  restoreFromZipBuffer,
+  createBackupZipBuffer,
+  hasDriveUploadCredentials,
+} = require('./driveBackup');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -119,7 +124,11 @@ app.use('/uploads', express.static(UPLOADS_DIR));
 app.use(express.static(ROOT_DIR));
 
 app.get('/api/health', (_req, res) => {
-  res.json({ ok: true, storage: 'filesystem' });
+  res.json({
+    ok: true,
+    storage: 'filesystem',
+    driveUploadConfigured: hasDriveUploadCredentials(),
+  });
 });
 
 // Endpoint para backup com informações completas
@@ -142,46 +151,31 @@ app.get('/api/backup/info', (_req, res) => {
   });
 });
 
-// Endpoint para backup completo em ZIP (com fotos)
-app.get('/api/backup/download', (req, res) => {
+// Endpoint para backup completo em ZIP (com fotos) — download local
+app.get('/api/backup/download', async (req, res) => {
   try {
     const memories = readMemories();
     const timestamp = new Date().toISOString().slice(0, 10);
-    
-    // Criar um arquivo ZIP
-    const archive = archiver('zip', { zlib: { level: 9 } });
-    
+    const buffer = await createBackupZipBuffer({ memories, uploadsDir: UPLOADS_DIR });
+
     res.setHeader('Content-Type', 'application/zip');
     res.setHeader('Content-Disposition', `attachment; filename="nossa-historia-completo-${timestamp}.zip"`);
-    
-    archive.pipe(res);
-    
-    // Adicionar memories.json
-    const jsonData = JSON.stringify(memories, null, 2);
-    archive.append(jsonData, { name: 'memories.json' });
-    
-    // Adicionar README com instruções
-    const readme = `BACKUP COMPLETO - Nossa História\nData: ${new Date().toISOString()}\n\n📁 Conteúdo:\n- memories.json: lista de todas as memórias com links e informações\n- uploads/: pasta com todas as imagens enviadas\n\n💾 Como restaurar:\n1. Abra o site em Modo Edição\n2. Clique em "Importar backup"\n3. Selecione o arquivo memories.json\n\n⚠️ Nota: Para restaurar as imagens também, você precisa:\n- Usar disco persistente no Render (plano Starter)\n- Copiar manualmente a pasta uploads/ ou fazer upload novamente\n\nOu recomendado:\n- Mantenha este ZIP como backup seguro\n- Use o disco persistente do Render para guardar tudo automaticamente`;
-    archive.append(readme, { name: 'README.txt' });
-    
-    // Adicionar todas as imagens da pasta uploads/
-    if (fs.existsSync(UPLOADS_DIR)) {
-      const files = fs.readdirSync(UPLOADS_DIR);
-      files.forEach(file => {
-        const filePath = path.join(UPLOADS_DIR, file);
-        if (fs.statSync(filePath).isFile()) {
-          archive.file(filePath, { name: `uploads/${file}` });
-        }
-      });
-    }
-    
-    archive.finalize();
-    
-    archive.on('error', (err) => {
-      res.status(500).json({ error: 'Erro ao criar backup: ' + err.message });
-    });
+    res.send(buffer);
   } catch (err) {
     res.status(500).json({ error: 'Erro ao processar backup: ' + err.message });
+  }
+});
+
+// Salva backup completo (ZIP com fotos) diretamente no Google Drive
+app.post('/api/backup/save-drive', async (_req, res) => {
+  try {
+    const result = await saveBackupToDrive({
+      readMemories,
+      uploadsDir: UPLOADS_DIR,
+    });
+    res.json({ success: true, ...result });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
   }
 });
 

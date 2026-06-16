@@ -58,5 +58,15 @@
     "spotifyEmbed": "https://open.spotify.com/embed/track/1oFqKeepmT5S8BCGqJl7Ar?utm_source=generator&theme=0",
     "lat": -20.67485321710365,
     "lng": -40.497293472290046
+  },
+  {
+    "id": "mqfuxxbuacfa1f",
+    "label": "teste",
+    "title": "eu amo donut",
+    "description": "muito foda alek",
+    "image": "/uploads/1781566914774-c307a4f5.png",
+    "spotifyEmbed": "https://open.spotify.com/embed/track/6gs5en9ccwH9tVtHOZm8jW?utm_source=generator&theme=0",
+    "lat": -22.910630422964164,
+    "lng": -43.20991516113282
   }
 ]

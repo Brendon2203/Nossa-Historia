@@ -17,6 +17,10 @@ services:
         value: "true"
       - key: GOOGLE_DRIVE_FOLDER_ID
         value: 1g0LxsS7Shd3-xWLE-F6kzEHj4FpO2iAX
+      - key: GOOGLE_DRIVE_BACKUP_FILENAME
+        value: nossa-historia-backup.zip
+      - key: GOOGLE_SERVICE_ACCOUNT_JSON
+        sync: false
 
     # ── Disco persistente (plano Starter: ~US$7/mês) ──
     # Com disco, fotos e pins não se perdem ao redeployar.

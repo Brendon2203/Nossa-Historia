@@ -1,3 +1,6 @@
 node_modules/
+google-service-account.json
+*.credentials.json
+
 uploads/*
 !uploads/.gitkeep
